@@ -1,8 +1,0 @@
----
-- name: 檢查實驗室主機資訊
-  hosts: onPremises
-  gather_facts: true  # 讓 Ansible 自動收集遠端主機的系統資訊
-  tasks:
-    - name: 顯示主機名稱與 IP 資訊
-      debug:
-        msg: "這台機器的 Hostname 是【{{ ansible_hostname }}】，主要 IP 是【{{ ansible_default_ipv4.address | default(ansible_host) }}】"

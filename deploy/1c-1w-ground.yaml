@@ -1,0 +1,104 @@
+---
+# =====================================================================
+# 🚀 專案一：hybrid-okd-vertex (全新純淨裸機一鍵開墾版)
+# =====================================================================
+
+# ---------------------------------------------------------------------
+# 【戰役一】初始化 lab1 網路中心 (Docker & dnsmasq) - 保持不變
+# ---------------------------------------------------------------------
+- name: "【戰役一】在 lab1 部署容器化 dnsmasq"
+  hosts: lab1
+  gather_facts: no
+  become: true
+  vars_files:
+    - ../configuration/instance-setting.yaml
+
+  tasks:
+    - name: "1. 停止並停用 systemd-resolved 服務"
+      ansible.builtin.systemctl:
+        name: systemd-resolved
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: "2. 重置 resolv.conf 確保能連外網"
+      ansible.builtin.copy:
+        dest: /etc/resolv.conf
+        content: "nameserver 8.8.8.8\n"
+        mode: '0644'
+
+    - name: "3. 建立 dnsmasq 配置持久化目錄"
+      ansible.builtin.file:
+        path: /opt/okd-infra
+        state: directory
+        mode: '0755'
+
+    - name: "4. 寫入 dnsmasq.conf 設定檔"
+      ansible.builtin.copy:
+        dest: /opt/okd-infra/dnsmasq.conf
+        mode: '0644'
+        content: |
+          interface={{ controlNodes.interface_bridge }}
+          bind-interfaces
+          domain=example.com
+          server=8.8.8.8
+          host-record=api.{{ cluster_domain }},{{ controlNodes.hosts[0].vm_ip }}
+          host-record=api-int.{{ cluster_domain }},{{ controlNodes.hosts[0].vm_ip }}
+          address=/.apps.{{ cluster_domain }}/{{ controlNodes.hosts[0].vm_ip }}
+          dhcp-range=10.42.0.210,10.42.0.215,255.255.255.0,12h
+          dhcp-host={{ controlNodes.hosts[0].vm_mac }},{{ controlNodes.hosts[0].vm_ip }},control,infinite
+          dhcp-host={{ workNodes.hosts[0].vm_mac }},{{ workNodes.hosts[0].vm_ip }},worker,infinite
+          dhcp-option=option:router=10.42.0.1
+          dhcp-option=option:dns-server=10.42.0.201
+
+    - name: "5. 在 lab1 拉起 dnsmasq 容器"
+      community.docker.docker_container:
+        name: okd-net-center
+        image: jpillora/dnsmasq
+        state: started
+        restart_policy: always
+        network_mode: host
+        capabilities: [- NET_ADMIN]
+        volumes:
+          - /opt/okd-infra/dnsmasq.conf:/etc/dnsmasq.conf
+
+# ---------------------------------------------------------------------
+# 【戰役二】在 lab1 自動下載標準 ISO 並建立 KVM 大腦虛擬機
+# ---------------------------------------------------------------------
+- name: "【戰役二】在 lab1 建立並啟動 OKD 大腦虛擬機"
+  hosts: lab1
+  gather_facts: no
+  become: true
+  vars_files:
+    - ../configuration/instance-setting.yaml
+
+  tasks:
+    - name: "2. 📥 自動下載官方標準 Fedora CoreOS Live ISO"
+      ansible.builtin.get_url:
+        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/41.20241109.3.0/x86_64/fedora-coreos-41.20241109.3.0-live.x86_64.iso"
+        dest: /var/lib/libvirt/images/fcos-live.iso
+        mode: '0644'
+
+    - name: "3. 🛸 把筆電容器裡的 master.ign 身分證上傳到 lab1"
+      ansible.builtin.copy:
+        src: ~/okd-deploy/master.ign
+        dest: /var/lib/libvirt/images/master.ign
+        mode: '0644'
+
+    - name: "4. 🛠️ 原生模組：建立虛擬機的 QCOW2 空白系統硬碟"
+      community.general.qemu_img:
+        dest: "/var/lib/libvirt/images/{{ controlNodes.hosts[0].vm_name }}.qcow2"
+        size: "{{ controlNodes.hosts[0].vm_disk_size }}G"
+        format: qcow2
+
+    - name: "5. 📝 原生模組：利用 XML 範本定義並直接啟動虛擬機"
+      community.general.virt:
+        name: "{{ controlNodes.hosts[0].vm_name }}"
+        command: define
+        xml: "{{ lookup('template', '../templates/kvm-vm.xml.j2') }}" # 🚀 核心：隔空塞入特製 XML
+        autostart: true
+
+    - name: "6. ⚡ 原生模組：確保虛擬機立刻開機執行"
+      community.general.virt:
+        name: "{{ controlNodes.hosts[0].vm_name }}"
+        state: running

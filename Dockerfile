@@ -7,3 +7,4 @@ RUN apt-get update && apt-get install -y bash openssh-client sshpass docker-cli 
 RUN pip install --upgrade pip && pip install ansible
 
 RUN ansible-galaxy collection install community.docker
+RUN ansible-galaxy collection install community.general
