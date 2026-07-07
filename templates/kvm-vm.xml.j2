@@ -3,8 +3,7 @@
     <memory unit='MiB'>{{ controlNodes.hosts[0].vm_memory }}</memory>
     <vcpu placement='static'>{{ controlNodes.hosts[0].vm_cpu }}</vcpu>
     <os>
-        <type arch='x86_64' machine='pc-q35-runtime'>hvm</type>
-        <boot dev='cdrom'/>
+        <type arch='x86_64' machine='q35'>hvm</type> <boot dev='cdrom'/>
         <boot dev='hd'/>
     </os>
     <features>
