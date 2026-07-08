@@ -50,10 +50,6 @@
     mode: '0644'
     remote_src: yes
   loop:
+    - bootstrap.ign
     - master.ign
     - worker.ign
-
-- name: "0.6 🧹 任務完成，徹底銷毀容器內暫存檔案"
-  ansible.builtin.file:
-    path: "{{ playbook_dir }}/../_build_ign"
-    state: absent

@@ -1,0 +1,60 @@
+---
+- name: "【任務 A】在筆電本地端等待 OKD 官方的拆除許可"
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - ../configuration/instance-setting.yaml
+
+  tasks:
+    - name: "1. ⏳ 等待 Bootstrap 完成 (這步會卡住直到出現 Safe to remove...)"
+      ansible.builtin.command:
+        # 🎯 修改這裡：讓 Ansible 先切換進去該目錄，再執行指令，完美模擬人類手動敲鍵盤的行為
+        chdir: "{{ playbook_dir }}/../_build_ign"
+        cmd: "./openshift-install wait-for bootstrap-complete --dir=. --log-level=info"
+      register: bootstrap_wait
+      changed_when: false
+
+    - name: "2. 🖨️ 印出官方確認訊息"
+      ansible.builtin.debug:
+        var: bootstrap_wait.stdout_lines
+
+- name: "【任務 B】在 lab1 執行毀滅與網管中心更新"
+  hosts: lab1
+  gather_facts: no
+  become: true
+  vars_files:
+    - ../configuration/instance-setting.yaml
+  vars:
+    # 🎯 關鍵：關閉魔法開關！這會讓 HAProxy 設定檔自動剔除 Bootstrap
+    enable_bootstrap: false
+
+  tasks:
+    - name: "3. 💀 強制關閉 Bootstrap 虛擬機"
+      community.libvirt.virt:
+        name: "{{ bootstrap.vm_name }}"
+        state: destroyed
+      ignore_errors: yes
+
+    - name: "4. 🗑️ 徹底刪除 Bootstrap 虛擬機定義"
+      community.libvirt.virt:
+        name: "{{ bootstrap.vm_name }}"
+        command: undefine
+      ignore_errors: yes
+
+    - name: "5. 🧹 刪除 Bootstrap 專屬 100G 虛擬硬碟"
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2"
+        state: absent
+
+    - name: "6. 📝 重新渲染 haproxy.cfg (此時已無 Bootstrap)"
+      ansible.builtin.template:
+        src: ../templates/haproxy.cfg.j2
+        dest: /opt/okd-infra/haproxy.cfg
+        mode: '0644'
+
+    - name: "7. 🔄 重啟 HAProxy 容器以套用新設定"
+      community.docker.docker_compose_v2:
+        project_src: /opt/okd-infra
+        state: restarted
+        services:
+          - haproxy

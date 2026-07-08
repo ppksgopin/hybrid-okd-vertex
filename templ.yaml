@@ -1,0 +1,44 @@
+    - name: "3.5a 📁 原生模組：在 Libvirt 中登記 (Define) default 儲存池"
+      community.libvirt.virt_pool:
+        name: default
+        state: present
+        xml: |
+          <pool type='dir'>
+            <name>default</name>
+            <target>
+              <path>/var/lib/libvirt/images</path>
+            </target>
+          </pool>
+
+    - name: "3.5b 📁 原生模組：激活 (Start) 並設定開機自啟 default 儲存池"
+      community.libvirt.virt_pool:
+        name: default
+        state: active # 🎯 關鍵修正：確認註冊後，再行激活並鎖定開機自啟
+        autostart: yes
+
+    - name: "4. 🛠️ 建立虛擬機專屬硬碟 (基於 FCOS 映像檔擴容)"
+      ansible.builtin.command:
+        cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ controlNodes.hosts[0].vm_name }}.qcow2 {{ controlNodes.hosts[0].vm_disk_size }}G"
+      args:
+        creates: "/var/lib/libvirt/images/{{ controlNodes.hosts[0].vm_name }}.qcow2"
+
+    - name: "5. 📝 原生模組：利用 XML 範本定義並直接啟動虛擬機"
+      community.libvirt.virt:
+        name: "{{ controlNodes.hosts[0].vm_name }}"
+        command: define
+        xml: "{{ lookup('template', '../templates/kvm-vm.xml.j2') }}"
+        autostart: true
+
+    - name: "6. ⚡ 原生模組：確保虛擬機立刻開機執行"
+      community.libvirt.virt:
+        name: "{{ controlNodes.hosts[0].vm_name }}"
+        state: running
+
+
+<type arch='x86_64' machine='q35'>hvm</type> <boot dev='cdrom'/>
+
+
+#- name: "0.6 🧹 任務完成，徹底銷毀容器內暫存檔案"
+#  ansible.builtin.file:
+#    path: "{{ playbook_dir }}/../_build_ign"
+#    state: absent

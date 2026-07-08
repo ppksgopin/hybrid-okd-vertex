@@ -1,0 +1,27 @@
+interface={{ controlNodes.interface_bridge }}
+bind-interfaces
+domain={{ cluster_domain }}
+server=8.8.8.8
+
+# 🚨 關鍵：將叢集的 API 門面全部指向 Bastion (lab1) 的 IP，交由 HAProxy 轉發
+host-record=api.{{ cluster_domain }},{{ bareMachine.hosts[0].ip }}
+host-record=api-int.{{ cluster_domain }},{{ bareMachine.hosts[0].ip }}
+address=/.apps.{{ cluster_domain }}/{{ bareMachine.hosts[0].ip }}
+
+# DHCP Options
+dhcp-option=option:router,10.42.0.1
+dhcp-option=option:dns-server,{{ bareMachine.hosts[0].ip }}
+
+# ==========================================
+# DHCP 固定 IP 發放清單 (動態迴圈展開)
+# ==========================================
+dhcp-range=10.42.0.0,static,255.255.255.0
+dhcp-host={{ bootstrap.vm_mac }},{{ bootstrap.vm_ip }},{{ bootstrap.vm_name }},infinite
+
+{% for node in controlNodes.hosts %}
+dhcp-host={{ node.vm_mac }},{{ node.vm_ip }},{{ node.vm_name }},infinite
+{% endfor %}
+
+{% for node in workNodes.hosts %}
+dhcp-host={{ node.vm_mac }},{{ node.vm_ip }},{{ node.vm_name }},infinite
+{% endfor %}

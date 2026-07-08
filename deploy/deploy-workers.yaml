@@ -1,0 +1,81 @@
+---
+# =====================================================================
+# 🚀 戰役四：擴充叢集四肢 (在 lab2 佈署 Worker Nodes)
+# =====================================================================
+- name: "【戰役四】在 lab2 建立並啟動 OKD 工作節點 (Worker)"
+  hosts: lab2
+  gather_facts: no
+  become: true
+  vars_files:
+    - ../configuration/instance-setting.yaml
+
+  tasks:
+    - name: "1. 🛡️ 解除 AppArmor/SELinux 限制：允許 QEMU 讀取自訂外掛韌體"
+      ansible.builtin.lineinfile:
+        path: /etc/libvirt/qemu.conf
+        regexp: '^#?\s*security_driver\s*=\s*.*'
+        line: 'security_driver = "none"'
+      register: qemu_security_config
+
+    - name: "2. 🔄 重啟 libvirtd 服務以強制套用安全設定"
+      ansible.builtin.systemd:
+        name: libvirtd
+        state: restarted
+      when: qemu_security_config.changed
+
+    - name: "3. 📥 自動下載官方 FCOS QEMU 映像檔"
+      ansible.builtin.get_url:
+        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/41.20241109.3.0/x86_64/fedora-coreos-41.20241109.3.0-qemu.x86_64.qcow2.xz"
+        dest: /var/lib/libvirt/images/fcos.qcow2.xz
+        mode: '0644'
+
+    - name: "4. 📦 解壓縮 QCOW2 映像檔"
+      ansible.builtin.command:
+        cmd: "unxz -k -f /var/lib/libvirt/images/fcos.qcow2.xz"
+      args:
+        creates: /var/lib/libvirt/images/fcos.qcow2
+
+    - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到 lab2"
+      ansible.builtin.copy:
+        src: "../templates/worker.ign"
+        dest: "/var/lib/libvirt/images/worker.ign"
+        mode: '0644'
+
+    - name: "6. 🛠️ 批次建立 Worker Node 虛擬機專屬硬碟"
+      ansible.builtin.command:
+        cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ item.vm_name }}.qcow2 {{ item.vm_disk_size }}G"
+      args:
+        creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
+      loop: "{{ workNodes.hosts }}"
+
+    - name: "7. 🔐 設定基礎映像檔與身分證的存取權限"
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/{{ item }}"
+        owner: libvirt-qemu
+        group: kvm
+        mode: '0644'
+      loop:
+        - fcos.qcow2
+        - worker.ign
+
+    - name: "8. 🔐 批次設定 Worker Node 虛擬硬碟存取權限"
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
+        owner: libvirt-qemu
+        group: kvm
+        mode: '0644'
+      loop: "{{ workNodes.hosts }}"
+
+    - name: "9. 📝 批次定義 Worker Node 虛擬機"
+      community.libvirt.virt:
+        name: "{{ item.vm_name }}"
+        command: define
+        xml: "{{ lookup('template', '../templates/worker.xml.j2', template_vars={'item': item}) }}"
+        autostart: true
+      loop: "{{ workNodes.hosts }}"
+
+    - name: "10. ⚡ 批次啟動 Worker Node 虛擬機"
+      community.libvirt.virt:
+        name: "{{ item.vm_name }}"
+        state: running
+      loop: "{{ workNodes.hosts }}"

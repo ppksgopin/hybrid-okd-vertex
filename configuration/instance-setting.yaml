@@ -7,6 +7,14 @@ bareMachine:
     - hostname: lab2
       ip: 10.42.0.202
 
+bootstrap:
+  vm_name: bootstrap-01
+  vm_ip: 10.42.0.209
+  vm_cpu: 4
+  vm_memory: 8192
+  vm_disk_size: 100
+  vm_mac: "52:54:00:aa:bb:cc"
+
 controlNodes:
   interface_bridge: br0
   hosts:

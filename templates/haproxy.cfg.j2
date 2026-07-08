@@ -1,0 +1,72 @@
+global
+    log /dev/log local0
+    maxconn 4000
+    daemon
+
+defaults
+    log global
+    mode tcp
+    option tcplog
+    option dontlognull
+    timeout connect 5s
+    timeout client 50s
+    timeout server 50s
+
+# ==========================================
+# 1. Kubernetes API 轉發 (Port 6443)
+# ==========================================
+frontend api-server
+    bind *:6443
+    default_backend control-plane-api
+
+backend control-plane-api
+    balance roundrobin
+    # 🎯 加上 if 開關，預設為 true (啟用)
+    {% if enable_bootstrap | default(true) %}
+    server {{ bootstrap.vm_name }} {{ bootstrap.vm_ip }}:6443 check inter 1s
+    {% endif %}
+    # 動態展開所有 Control Nodes
+    {% for node in controlNodes.hosts %}
+    server {{ node.vm_name }} {{ node.vm_ip }}:6443 check inter 1s
+    {% endfor %}
+
+# ==========================================
+# 2. Machine Config Server 轉發 (Port 22623)
+# ==========================================
+frontend machine-config
+    bind *:22623
+    default_backend control-plane-mcs
+
+backend control-plane-mcs
+    balance roundrobin
+    # 🎯 加上 if 開關
+    {% if enable_bootstrap | default(true) %}
+    server {{ bootstrap.vm_name }} {{ bootstrap.vm_ip }}:22623 check inter 1s
+    {% endif %}
+    # 動態展開所有 Control Nodes
+    {% for node in controlNodes.hosts %}
+    server {{ node.vm_name }} {{ node.vm_ip }}:22623 check inter 1s
+    {% endfor %}
+
+# ==========================================
+# 3. 未來的 Ingress 轉發 (Port 80/443 預留給 Worker)
+# ==========================================
+frontend router-http
+    bind *:80
+    default_backend ingress-http
+
+backend ingress-http
+    balance roundrobin
+    {% for node in workNodes.hosts %}
+    server {{ node.vm_name }} {{ node.vm_ip }}:80 check
+    {% endfor %}
+
+frontend router-https
+    bind *:443
+    default_backend ingress-https
+
+backend ingress-https
+    balance roundrobin
+    {% for node in workNodes.hosts %}
+    server {{ node.vm_name }} {{ node.vm_ip }}:443 check
+    {% endfor %}

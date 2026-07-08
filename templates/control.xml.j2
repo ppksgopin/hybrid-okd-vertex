@@ -1,0 +1,41 @@
+<domain type='kvm' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+    <name>{{ item.vm_name }}</name>
+    <memory unit='MiB'>{{ item.vm_memory }}</memory>
+    <vcpu placement='static'>{{ item.vm_cpu }}</vcpu>
+    <os>
+        <type arch='x86_64' machine='q35'>hvm</type>
+        <boot dev='hd'/>
+    </os>
+    <features>
+        <acpi/>
+        <apic/>
+    </features>
+    <cpu mode='host-passthrough'/>
+    <clock offset='utc'/>
+    <on_poweroff>destroy</on_poweroff>
+    <on_reboot>restart</on_reboot>
+    <on_crash>destroy</on_crash>
+    <devices>
+        <disk type='file' device='disk'>
+            <driver name='qemu' type='qcow2' cache='none' io='native'/>
+            <source file='/var/lib/libvirt/images/{{ item.vm_name }}.qcow2'/>
+            <target dev='vda' bus='virtio'/>
+        </disk>
+        <interface type='bridge'>
+            <source bridge='{{ controlNodes.interface_bridge }}'/>
+            <mac address='{{ item.vm_mac }}'/>
+            <model type='virtio'/>
+        </interface>
+        <console type='pty'>
+            <target type='serial' port='0'/>
+        </console>
+        <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+        <video>
+            <model type='vga'/>
+        </video>
+    </devices>
+    <qemu:commandline>
+        <qemu:arg value='-fw_cfg'/>
+        <qemu:arg value='name=opt/com.coreos/config,file=/var/lib/libvirt/images/master.ign'/>
+    </qemu:commandline>
+</domain>
