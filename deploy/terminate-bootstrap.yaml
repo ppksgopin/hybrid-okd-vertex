@@ -6,6 +6,11 @@
     - ../configuration/instance-setting.yaml
 
   tasks:
+    - name: "0. 📝 幫 Ansible 容器寫小抄 (解決 DNS 解析問題)"
+      ansible.builtin.shell: |
+        grep -q "api.okd-lab.example.com" /etc/hosts || echo "10.42.0.201 api.okd-lab.example.com" >> /etc/hosts
+      changed_when: false
+
     - name: "1. ⏳ 等待 Bootstrap 完成 (這步會卡住直到出現 Safe to remove...)"
       ansible.builtin.command:
         # 🎯 修改這裡：讓 Ansible 先切換進去該目錄，再執行指令，完美模擬人類手動敲鍵盤的行為
