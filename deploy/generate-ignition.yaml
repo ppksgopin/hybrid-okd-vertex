@@ -3,13 +3,17 @@
 # 🎯 拋棄式任務：在 Ansible 容器內部原地烘焙 OKD 身分證 (Ignition)
 # =====================================================================
 
+- name: "0.0 📂 讀取叢集基礎架構設定變數"
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../configuration/instance-setting.yaml"
+
 - name: "0.1 📂 建立本地暫存工作區"
   ansible.builtin.file:
     path: "{{ playbook_dir }}/../_build_ign"
     state: directory
     mode: '0755'
 
-- name: "0.2 📝 寫入 install-config.yaml 核心規格書"
+- name: "0.2 📝 寫入 install-config.yaml 核心規格書 (動態節點數量)"
   ansible.builtin.copy:
     dest: "{{ playbook_dir }}/../_build_ign/install-config.yaml"
     mode: '0644'
@@ -21,11 +25,11 @@
       compute:
       - hyperthreading: Enabled
         name: worker
-        replicas: 1
+        replicas: {{ workNodes.hosts | length | default(0) }}
       controlPlane:
         hyperthreading: Enabled
         name: master
-        replicas: 1
+        replicas: {{ controlNodes.hosts | length | default(1) }}
       platform:
         none: {}
       pullSecret: '{"auths":{"fake":{"auth":"aG9nZf=="}}}'
