@@ -1,4 +1,3 @@
----
 # =====================================================================
 # 🎯 拋棄式任務：在 Ansible 容器內部原地烘焙 OKD 身分證 (Ignition)
 # =====================================================================
@@ -37,7 +36,7 @@
 
 - name: "0.3 📥 下載並解壓 OKD 官方核心安裝工具"
   ansible.builtin.unarchive:
-    src: "https://github.com/okd-project/okd/releases/download/4.15.0-0.okd-2024-03-10-010116/openshift-install-linux-4.15.0-0.okd-2024-03-10-010116.tar.gz"
+    src: "https://github.com/okd-project/okd/releases/download/4.14.0-0.okd-2024-01-26-175629/openshift-install-linux-4.14.0-0.okd-2024-01-26-175629.tar.gz"
     dest: "{{ playbook_dir }}/../_build_ign"
     remote_src: yes # 告訴 Ansible 這是從網路上抓，直接在容器內解壓
 
@@ -47,7 +46,44 @@
   args:
     chdir: "{{ playbook_dir }}/../_build_ign"
 
-- name: "0.5 🛸 將生成的 DNA 身分證移至專案根目錄 (透過掛載自動同步回筆電)"
+# ✨ 新增：下載 4.14 的 oc client 工具
+- name: "0.5 📥 下載並解壓 OKD 官方用戶端工具 (oc CLI)"
+  ansible.builtin.unarchive:
+    src: "https://github.com/okd-project/okd/releases/download/4.14.0-0.okd-2024-01-26-175629/openshift-client-linux-4.14.0-0.okd-2024-01-26-175629.tar.gz"
+    dest: "{{ playbook_dir }}/../_build_ign"
+    remote_src: yes
+
+# ✨ 修改後：同時覆蓋 /usr/bin 與 /usr/local/bin，徹底消滅 4.15 幽靈
+- name: "0.6 👑 強力覆蓋容器內的系統 oc 與 kubectl 工具"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../_build_ign/{{ item.binary }}"
+    dest: "{{ item.path }}/{{ item.binary }}"
+    mode: '0755'
+    remote_src: yes
+  loop:
+    - { binary: 'oc', path: '/usr/bin' }
+    - { binary: 'oc', path: '/usr/local/bin' }
+    - { binary: 'kubectl', path: '/usr/bin' }
+    - { binary: 'kubectl', path: '/usr/local/bin' }
+  ignore_errors: yes # 防止有些精簡版容器本來就沒有 /usr/local/bin 而噴錯
+
+# =====================================================================
+# ✨ 【神來一筆】: 自動配置 Kubeconfig 預設路徑，省去手動 export 的麻煩
+# =====================================================================
+- name: "0.6.1 🔐 建立容器預設 Kubeconfig 目錄"
+  ansible.builtin.file:
+    path: "/root/.kube"
+    state: directory
+    mode: '0700'
+
+- name: "0.6.2 🔑 複製憑證至預設路徑，讓 oc 指令免設定直接通關"
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../_build_ign/auth/kubeconfig"
+    dest: "/root/.kube/config"
+    mode: '0600'
+    remote_src: yes
+
+- name: "0.7 🛸 將生成的 DNA 身分證移至專案根目錄 (透過掛載自動同步回筆電)"
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../_build_ign/{{ item }}"
     dest: "{{ playbook_dir }}/../templates/{{ item }}"

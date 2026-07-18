@@ -23,14 +23,15 @@
         state: restarted
       when: qemu_security_config.changed
 
-    - name: "3. 📥 自動下載官方 FCOS QEMU 映像檔"
+    - name: "3. 📥 自動下載官方 FCOS QEMU 映像檔 (確保與 Master 完全同步使用 FCOS 38)"
       ansible.builtin.get_url:
-        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/41.20241109.3.0/x86_64/fedora-coreos-41.20241109.3.0-qemu.x86_64.qcow2.xz"
+        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/38.20231002.3.1/x86_64/fedora-coreos-38.20231002.3.1-qemu.x86_64.qcow2.xz"
         dest: /var/lib/libvirt/images/fcos.qcow2.xz
         mode: '0644'
 
     - name: "4. 📦 解壓縮 QCOW2 映像檔"
       ansible.builtin.command:
+        # 加上 -k 保留原檔，避免重複下載
         cmd: "unxz -k -f /var/lib/libvirt/images/fcos.qcow2.xz"
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
