@@ -6,7 +6,6 @@ services:
     network_mode: host
     cap_add:
       - NET_ADMIN
-    # 🎯 徹底覆寫 entrypoint，完全拋棄 webproc，只執行純粹的 dnsmasq
     entrypoint: ["dnsmasq", "-k", "--log-facility=-"]
     volumes:
       - ./dnsmasq.conf:/etc/dnsmasq.conf:ro

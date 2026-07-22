@@ -95,7 +95,7 @@
 
     - name: "2. 📥 自動下載官方 FCOS QEMU 映像檔 (取代 Live ISO)"
       ansible.builtin.get_url:
-        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/38.20231002.3.1/x86_64/fedora-coreos-38.20231002.3.1-qemu.x86_64.qcow2.xz"
+        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
         dest: /var/lib/libvirt/images/fcos.qcow2.xz
         mode: '0644'
 
@@ -176,3 +176,16 @@
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ controlNodes.hosts }}"
+
+
+- name: "【任務 A】在筆電本地端等待 OKD 官方的拆除許可"
+  hosts: localhost
+  gather_facts: no
+  vars_files:
+    - ../configuration/instance-setting.yaml
+
+  tasks:
+    - name: "0. 📝 幫 Ansible 容器寫小抄 (解決 DNS 解析問題)"
+      ansible.builtin.shell: |
+        echo "10.42.0.201 api.okd-lab.example.com" | tee -a /etc/hosts
+      changed_when: false

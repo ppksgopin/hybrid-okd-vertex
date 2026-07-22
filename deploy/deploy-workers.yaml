@@ -25,7 +25,7 @@
 
     - name: "3. 📥 自動下載官方 FCOS QEMU 映像檔 (確保與 Master 完全同步使用 FCOS 38)"
       ansible.builtin.get_url:
-        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/38.20231002.3.1/x86_64/fedora-coreos-38.20231002.3.1-qemu.x86_64.qcow2.xz"
+        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
         dest: /var/lib/libvirt/images/fcos.qcow2.xz
         mode: '0644'
 
