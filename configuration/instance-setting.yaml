@@ -29,6 +29,7 @@ controlNodes:
       vm_mac: "52:54:00:11:22:33"
 
 workNodes:
+  interface_bridge: br0
   hosts:
     - vm_name: worker-01
       vm_ip: 10.42.0.211
