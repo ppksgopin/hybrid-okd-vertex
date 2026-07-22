@@ -93,3 +93,17 @@
     - bootstrap.ign
     - master.ign
     - worker.ign
+
+- name: "0.7.1 🧹 清除 _build_ign 原始檔案"
+  ansible.builtin.file:
+    path: "{{ playbook_dir }}/../_build_ign/{{ item }}"
+    state: absent
+  loop:
+    - bootstrap.ign
+    - master.ign
+    - worker.ign
+
+- name: "0.8 📝 幫 Ansible 容器寫小抄 (解決 DNS 解析問題)"
+  ansible.builtin.shell: |
+    echo "10.42.0.201 api.okd-lab.example.com" | tee -a /etc/hosts
+  changed_when: false

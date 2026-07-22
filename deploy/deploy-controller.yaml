@@ -176,16 +176,3 @@
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ controlNodes.hosts }}"
-
-
-- name: "【任務 A】在筆電本地端等待 OKD 官方的拆除許可"
-  hosts: localhost
-  gather_facts: no
-  vars_files:
-    - ../configuration/instance-setting.yaml
-
-  tasks:
-    - name: "0. 📝 幫 Ansible 容器寫小抄 (解決 DNS 解析問題)"
-      ansible.builtin.shell: |
-        echo "10.42.0.201 api.okd-lab.example.com" | tee -a /etc/hosts
-      changed_when: false
