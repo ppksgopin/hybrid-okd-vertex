@@ -24,7 +24,7 @@
       compute:
       - hyperthreading: Enabled
         name: worker
-        replicas: {{ workNodes.hosts | length | default(0) }}
+        replicas: {{ workNodes.onPremises.hosts | length | default(0) }}
       controlPlane:
         hyperthreading: Enabled
         name: master

@@ -47,7 +47,7 @@
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ item.vm_name }}.qcow2 {{ item.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
-      loop: "{{ workNodes.hosts }}"
+      loop: "{{ workNodes.onPremises.hosts }}"
 
     - name: "7. 🔐 設定基礎映像檔與身分證的存取權限"
       ansible.builtin.file:
@@ -65,7 +65,7 @@
         owner: libvirt-qemu
         group: kvm
         mode: '0644'
-      loop: "{{ workNodes.hosts }}"
+      loop: "{{ workNodes.onPremises.hosts }}"
 
     - name: "9. 📝 批次定義 Worker Node 虛擬機"
       community.libvirt.virt:
@@ -73,10 +73,10 @@
         command: define
         xml: "{{ lookup('template', '../templates/worker.xml.j2', template_vars={'item': item}) }}"
         autostart: true
-      loop: "{{ workNodes.hosts }}"
+      loop: "{{ workNodes.onPremises.hosts }}"
 
     - name: "10. ⚡ 批次啟動 Worker Node 虛擬機"
       community.libvirt.virt:
         name: "{{ item.vm_name }}"
         state: running
-      loop: "{{ workNodes.hosts }}"
+      loop: "{{ workNodes.onPremises.hosts }}"

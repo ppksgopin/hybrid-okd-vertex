@@ -22,6 +22,6 @@ dhcp-host={{ bootstrap.vm_mac }},{{ bootstrap.vm_ip }},{{ bootstrap.vm_name }},i
 dhcp-host={{ node.vm_mac }},{{ node.vm_ip }},{{ node.vm_name }},infinite
 {% endfor %}
 
-{% for node in workNodes.hosts %}
+{% for node in workNodes.onPremises.hosts %}
 dhcp-host={{ node.vm_mac }},{{ node.vm_ip }},{{ node.vm_name }},infinite
 {% endfor %}

@@ -22,7 +22,7 @@
             <target dev='vda' bus='virtio'/>
         </disk>
         <interface type='bridge'>
-            <source bridge='{{ workNodes.interface_bridge }}'/>
+            <source bridge='{{ workNodes.onPremises.interface_bridge }}'/>
             <mac address='{{ item.vm_mac }}'/>
             <model type='virtio'/>
         </interface>

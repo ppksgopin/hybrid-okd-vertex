@@ -57,7 +57,7 @@ frontend router-http
 
 backend ingress-http
     balance roundrobin
-    {% for node in workNodes.hosts %}
+    {% for node in workNodes.onPremises.hosts %}
     server {{ node.vm_name }} {{ node.vm_ip }}:80 check
     {% endfor %}
 
@@ -67,6 +67,6 @@ frontend router-https
 
 backend ingress-https
     balance roundrobin
-    {% for node in workNodes.hosts %}
+    {% for node in workNodes.onPremises.hosts %}
     server {{ node.vm_name }} {{ node.vm_ip }}:443 check
     {% endfor %}
