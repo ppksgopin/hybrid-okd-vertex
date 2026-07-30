@@ -34,11 +34,21 @@
         enabled: false
       failed_when: false
 
-    - name: "2. 重置 resolv.conf 確保實體機能連外網"
+    - name: "2. 移除 resolv.conf 軟連結 (避免寫入到無效的 systemd 目標)"
+      ansible.builtin.file:
+        path: /etc/resolv.conf
+        state: absent
+
+    - name: "2.1 重置 resolv.conf 確保實體機能連外網"
       ansible.builtin.copy:
         dest: /etc/resolv.conf
         content: "nameserver 8.8.8.8\n"
         mode: '0644'
+
+    - name: "2.2 重新啟動 Docker 服務以套用新的 DNS 設定"
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
 
     - name: "3. 建立 Bastion 專屬配置目錄"
       ansible.builtin.file:
@@ -64,6 +74,18 @@
         dest: /opt/okd-infra/docker-compose.yaml
         mode: '0644'
 
+    - name: "6.5 🛠️ 預先拉取 Docker Images (加入重試機制避免網路抖動)"
+      community.docker.docker_image:
+        name: "{{ item }}"
+        source: pull
+      loop:
+        - "jpillora/dnsmasq:latest"
+        - "haproxy:2.8-alpine"
+      register: pull_result
+      retries: 5
+      delay: 5
+      until: pull_result is not failed
+
     - name: "7. 🚀 在 lab1 啟動 Bastion 雙擎 (Docker Compose)"
       community.docker.docker_compose_v2:
         project_src: /opt/okd-infra
@@ -75,19 +97,21 @@
 - name: "【戰役二】在 lab1 建立並啟動 OKD 大腦虛擬機"
   hosts: lab1
   gather_facts: no
-  become: true
+  become: false  # <--- 關閉全域提權，改為用一般使用者 ppksgopin 執行
   vars_files:
     - ../configuration/instance-setting.yaml
 
   tasks:
-    - name: "1.5 🛡️ 解除 AppArmor/SELinux 限制：允許 QEMU 讀取自訂外掛韌體"
+    - name: "1.5 🛡️ 解除 AppArmor/SELinux 限制：允許 QEMU 讀取自訂外掛韌體 (需要 root 權限)"
+      become: true
       ansible.builtin.lineinfile:
         path: /etc/libvirt/qemu.conf
         regexp: '^#?\s*security_driver\s*=\s*.*'
         line: 'security_driver = "none"'
       register: qemu_security_config
 
-    - name: "1.6 🔄 重啟 libvirtd 服務以強制套用安全設定"
+    - name: "1.6 🔄 重啟 libvirtd 服務以強制套用安全設定 (需要 root 權限)"
+      become: true
       ansible.builtin.systemd:
         name: libvirtd
         state: restarted
@@ -96,18 +120,18 @@
     - name: "2. 📥 自動下載官方 FCOS QEMU 映像檔 (取代 Live ISO)"
       ansible.builtin.get_url:
         url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
-        dest: /var/lib/libvirt/images/fcos.qcow2.xz
+        dest: /tmp/fcos.qcow2.xz # 先下載到 /tmp
         mode: '0644'
 
-    - name: "2.1 📦 解壓縮 QCOW2 映像檔"
-      ansible.builtin.command:
-        # 加上 -k (keep) 保留原壓縮檔，確保 Ansible 再次執行時不會重複下載
-        cmd: "unxz -k -f /var/lib/libvirt/images/fcos.qcow2.xz"
+    - name: "2.1 📦 解壓縮 QCOW2 映像檔 (需要 root 權限寫入 /var/lib/libvirt/images)"
+      become: true
+      ansible.builtin.shell:
+        cmd: "unxz -k -c /tmp/fcos.qcow2.xz > /var/lib/libvirt/images/fcos.qcow2"
       args:
-        # 如果解壓後的檔案已存在，就跳過此步驟
         creates: /var/lib/libvirt/images/fcos.qcow2
 
-    - name: "3. 🛸 把身分證上傳到 lab1 (Master & Bootstrap)"
+    - name: "3. 🛸 把身分證上傳到 lab1 (Master & Bootstrap) (需要 root 權限寫入 /var/lib/libvirt/images)"
+      become: true
       ansible.builtin.copy:
         src: "../templates/{{ item }}"
         dest: "/var/lib/libvirt/images/{{ item }}"
@@ -117,53 +141,76 @@
         - bootstrap.ign
 
     # --- Bootstrap 專區 (永遠只有 1 台，不需要迴圈) ---
-    - name: "4. 🛠️ 建立 Bootstrap 虛擬機專屬硬碟"
+    - name: "4. 🛠️ 建立 Bootstrap 虛擬機專屬硬碟 (需要 root 權限)"
+      become: true
       ansible.builtin.command:
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2 {{ bootstrap.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2"
 
-    - name: "4.1 🛠️ 批次建立 Control Node 虛擬機專屬硬碟"
+    - name: "4.1 🛠️ 批次建立 Control Node 虛擬機專屬硬碟 (需要 root 權限)"
+      become: true
       ansible.builtin.command:
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ item.vm_name }}.qcow2 {{ item.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
       loop: "{{ controlNodes.hosts }}" # <--- 直接吃整個 List！
 
-    - name: "5. 🔐 設定基礎映像檔、Bootstrap 與身分證的存取權限"
+    - name: "5. 🔐 設定基礎映像檔、Bootstrap 與身分證的存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
+      become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ item }}"
         owner: libvirt-qemu
-        group: kvm
-        mode: '0644'
+        group: ppksgopin
+        mode: '0664'
       loop:
         - fcos.qcow2
         - master.ign
         - bootstrap.ign
         - "{{ bootstrap.vm_name }}.qcow2"
 
-    - name: "5.1 🔐 批次設定 Control Node 虛擬硬碟存取權限"
+    - name: "5.1 🔐 批次設定 Control Node 虛擬硬碟存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
+      become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
         owner: libvirt-qemu
-        group: kvm
-        mode: '0644'
+        group: ppksgopin
+        mode: '0664'
       loop: "{{ controlNodes.hosts }}"
 
-    - name: "6. 📝 定義 Bootstrap 虛擬機"
+    - name: "5.3 🛡️ 設定 QEMU Bridge Helper 的存取權限 (允許 ppksgopin 透過 bridge 連網)"
+      become: true
+      ansible.builtin.file:
+        path: /usr/lib/qemu/qemu-bridge-helper
+        mode: 'u+s' # 設定 SUID，讓這個小幫手能以 root 權限執行橋接
+
+    - name: "5.4 🛡️ 配置 qemu-bridge-helper 的 ACL 白名單"
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/qemu/bridge.conf
+        content: |
+          allow br0
+          allow all
+        mode: '0644'
+        directory_mode: '0755'
+
+    - name: "6. 📝 定義 Bootstrap 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ bootstrap.vm_name }}"
         command: define
         xml: "{{ lookup('template', '../templates/bootstrap.xml.j2') }}"
         autostart: true
 
-    - name: "7. ⚡ 啟動 Bootstrap 虛擬機"
+    - name: "7. ⚡ 啟掌握 Bootstrap 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ bootstrap.vm_name }}"
         state: running
 
-    - name: "6.1 📝 批次定義 Control Node 虛擬機"
+    - name: "6.1 📝 批次定義 Control Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ item.vm_name }}"
         command: define
         # 把 item 傳進去給 template 渲染
@@ -171,8 +218,9 @@
         autostart: true
       loop: "{{ controlNodes.hosts }}"
 
-    - name: "7.1 ⚡ 批次啟動 Control Node 虛擬機"
+    - name: "7.1 ⚡ 批次啟動 Control Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ controlNodes.hosts }}"

@@ -5,19 +5,21 @@
 - name: "【戰役四】在 lab2 建立並啟動 OKD 工作節點 (Worker)"
   hosts: lab2
   gather_facts: no
-  become: true
+  become: false  # <--- 關閉全域提權，改為用一般使用者執行
   vars_files:
     - ../configuration/instance-setting.yaml
 
   tasks:
-    - name: "1. 🛡️ 解除 AppArmor/SELinux 限制：允許 QEMU 讀取自訂外掛韌體"
+    - name: "1. 🛡️ 解除 AppArmor/SELinux 限制：允許 QEMU 讀取自訂外掛韌體 (需要 root 權限)"
+      become: true
       ansible.builtin.lineinfile:
         path: /etc/libvirt/qemu.conf
         regexp: '^#?\s*security_driver\s*=\s*.*'
         line: 'security_driver = "none"'
       register: qemu_security_config
 
-    - name: "2. 🔄 重啟 libvirtd 服務以強制套用安全設定"
+    - name: "2. 🔄 重啟 libvirtd 服務以強制套用安全設定 (需要 root 權限)"
+      become: true
       ansible.builtin.systemd:
         name: libvirtd
         state: restarted
@@ -26,57 +28,79 @@
     - name: "3. 📥 自動下載官方 FCOS QEMU 映像檔 (確保與 Master 完全同步使用 FCOS 38)"
       ansible.builtin.get_url:
         url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
-        dest: /var/lib/libvirt/images/fcos.qcow2.xz
+        dest: /tmp/fcos.qcow2.xz # 先下載到 /tmp
         mode: '0644'
 
-    - name: "4. 📦 解壓縮 QCOW2 映像檔"
-      ansible.builtin.command:
-        # 加上 -k 保留原檔，避免重複下載
-        cmd: "unxz -k -f /var/lib/libvirt/images/fcos.qcow2.xz"
+    - name: "4. 📦 解壓縮 QCOW2 映像檔 (需要 root 權限寫入 /var/lib/libvirt/images)"
+      become: true
+      ansible.builtin.shell:
+        cmd: "unxz -k -c /tmp/fcos.qcow2.xz > /var/lib/libvirt/images/fcos.qcow2"
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
 
-    - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到 lab2"
+    - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到 lab2 (需要 root 權限寫入 /var/lib/libvirt/images)"
+      become: true
       ansible.builtin.copy:
         src: "../templates/worker.ign"
         dest: "/var/lib/libvirt/images/worker.ign"
         mode: '0644'
 
-    - name: "6. 🛠️ 批次建立 Worker Node 虛擬機專屬硬碟"
+    - name: "6. 🛠️ 批次建立 Worker Node 虛擬機專屬硬碟 (需要 root 權限)"
+      become: true
       ansible.builtin.command:
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ item.vm_name }}.qcow2 {{ item.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
       loop: "{{ workNodes.onPremises.hosts }}"
 
-    - name: "7. 🔐 設定基礎映像檔與身分證的存取權限"
+    - name: "7. 🔐 設定基礎映像檔與身分證的存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
+      become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ item }}"
         owner: libvirt-qemu
-        group: kvm
-        mode: '0644'
+        group: ppksgopin
+        mode: '0664'
       loop:
         - fcos.qcow2
         - worker.ign
 
-    - name: "8. 🔐 批次設定 Worker Node 虛擬硬碟存取權限"
+    - name: "8. 🔐 批次設定 Worker Node 虛擬硬碟存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
+      become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
         owner: libvirt-qemu
-        group: kvm
-        mode: '0644'
+        group: ppksgopin
+        mode: '0664'
       loop: "{{ workNodes.onPremises.hosts }}"
 
-    - name: "9. 📝 批次定義 Worker Node 虛擬機"
+    - name: "8.3 🛡️ 設定 QEMU Bridge Helper 的存取權限 (允許 ppksgopin 透過 bridge 連網)"
+      become: true
+      ansible.builtin.file:
+        path: /usr/lib/qemu/qemu-bridge-helper
+        mode: 'u+s'
+
+    - name: "8.4 🛡️ 配置 qemu-bridge-helper 的 ACL 白名單"
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/qemu/bridge.conf
+        content: |
+          allow {{ workNodes.onPremises.interface_bridge }}
+          allow all
+        mode: '0644'
+        directory_mode: '0755'
+
+    - name: "9. 📝 批次定義 Worker Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ item.vm_name }}"
         command: define
         xml: "{{ lookup('template', '../templates/worker.xml.j2', template_vars={'item': item}) }}"
         autostart: true
       loop: "{{ workNodes.onPremises.hosts }}"
 
-    - name: "10. ⚡ 批次啟動 Worker Node 虛擬機"
+    - name: "10. ⚡ 批次啟動 Worker Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ workNodes.onPremises.hosts }}"

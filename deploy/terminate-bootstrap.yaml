@@ -26,7 +26,7 @@
 - name: "【任務 B】在 lab1 執行毀滅與網管中心更新"
   hosts: lab1
   gather_facts: no
-  become: true
+  become: false  # <--- 關閉全域提權，與建立時保持一致，使用 ppksgopin 身分
   vars_files:
     - ../configuration/instance-setting.yaml
   vars:
@@ -34,30 +34,35 @@
     enable_bootstrap: false
 
   tasks:
-    - name: "3. 💀 強制關閉 Bootstrap 虛擬機"
+    - name: "3. 💀 強制關閉 Bootstrap 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ bootstrap.vm_name }}"
         state: destroyed
       ignore_errors: yes
 
-    - name: "4. 🗑️ 徹底刪除 Bootstrap 虛擬機定義"
+    - name: "4. 🗑️ 徹底刪除 Bootstrap 虛擬機定義 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
+        uri: 'qemu:///session'
         name: "{{ bootstrap.vm_name }}"
         command: undefine
       ignore_errors: yes
 
-    - name: "5. 🧹 刪除 Bootstrap 專屬 100G 虛擬硬碟"
+    - name: "5. 🧹 刪除 Bootstrap 專屬 100G 虛擬硬碟 (需要 root 權限，因為在 /var/lib/libvirt/images)"
+      become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2"
         state: absent
 
-    - name: "6. 📝 重新渲染 haproxy.cfg (此時已無 Bootstrap)"
+    - name: "6. 📝 重新渲染 haproxy.cfg (此時已無 Bootstrap) (需要 root 權限寫入 /opt/okd-infra)"
+      become: true
       ansible.builtin.template:
         src: ../templates/haproxy.cfg.j2
         dest: /opt/okd-infra/haproxy.cfg
         mode: '0644'
 
-    - name: "7. 🔄 重啟 HAProxy 容器以套用新設定"
+    - name: "7. 🔄 重啟 HAProxy 容器以套用新設定 (需要 root 權限或 docker 群組，保險起見使用 root)"
+      become: true
       community.docker.docker_compose_v2:
         project_src: /opt/okd-infra
         state: restarted
