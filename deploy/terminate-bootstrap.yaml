@@ -23,6 +23,10 @@
       ansible.builtin.debug:
         var: bootstrap_wait.stdout_lines
 
+    - name: "3. ⏳ 等待 10 分鐘"
+      ansible.builtin.pause:
+        minutes: 10
+
 - name: "【任務 B】在 lab1 執行毀滅與網管中心更新"
   hosts: lab1
   gather_facts: no
