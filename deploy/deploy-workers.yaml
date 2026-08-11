@@ -114,7 +114,8 @@
   tasks:
     - name: "1. 🛠️ 執行 oc patch 強制 Ingress Controller 跑在 Worker 節點"
       ansible.builtin.shell: |
-        docker exec ansible-infra oc patch ingresscontroller default -n openshift-ingress-operator \
+        oc patch ingresscontroller default -n openshift-ingress-operator \
+        --kubeconfig="{{ playbook_dir }}/../_build_ign/auth/kubeconfig" \
         --type=merge \
         --patch='{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker":""}}}}}'
       ignore_errors: yes
