@@ -2,7 +2,6 @@ cluster_domain: okd-lab.example.com
 okd_version: "4.14.0-0.okd-2024-01-26-175629"
 fcos_version: "38.20231002.3.1"
 
-
 bareMachine:
   hosts:
     - hostname: lab1
