@@ -17,9 +17,9 @@
 # =====================================================================
 
 # ---------------------------------------------------------------------
-# 【戰役一】初始化 lab1 網路中心 (Docker & dnsmasq) - 保持不變
+# 【戰役一】初始化 bastion 網路中心 (Docker & dnsmasq) - 保持不變
 # ---------------------------------------------------------------------
-- name: "【戰役一】在 lab1 部署 Bastion 網管中心"
+- name: "【戰役一】在 bastion 部署 Bastion 網管中心"
   hosts: lab1
   gather_facts: no
   become: true
@@ -68,7 +68,7 @@
         dest: /opt/okd-infra/haproxy.cfg
         mode: '0644'
 
-    - name: "6. 📦 複製 docker-compose.yaml 到 lab1"
+    - name: "6. 📦 複製 docker-compose.yaml 到 bastion"
       ansible.builtin.copy:
         src: docker-compose.yaml
         dest: /opt/okd-infra/docker-compose.yaml
@@ -86,16 +86,16 @@
       delay: 5
       until: pull_result is not failed
 
-    - name: "7. 🚀 在 lab1 啟動 Bastion 雙擎 (Docker Compose)"
+    - name: "7. 🚀 在 bastion 啟動 Bastion 雙擎 (Docker Compose)"
       community.docker.docker_compose_v2:
         project_src: /opt/okd-infra
         state: present
 
 # ---------------------------------------------------------------------
-# 【戰役二】在 lab1 自動下載標準 ISO 並建立 KVM 大腦虛擬機
+# 【戰役二】自動下載標準 ISO 並建立 KVM 大腦虛擬機
 # ---------------------------------------------------------------------
-- name: "【戰役二】在 lab1 建立並啟動 OKD 大腦虛擬機"
-  hosts: lab1
+- name: "【戰役二】在實體機建立並啟動 OKD 大腦虛擬機"
+  hosts: onPremises
   gather_facts: no
   become: false  # <--- 關閉全域提權，改為用一般使用者 ppksgopin 執行
   vars_files:
@@ -130,7 +130,7 @@
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
 
-    - name: "3. 🛸 把身分證上傳到 lab1 (Master & Bootstrap) (需要 root 權限寫入 /var/lib/libvirt/images)"
+    - name: "3. 🛸 把身分證上傳到實體機 (Master & Bootstrap) (需要 root 權限寫入 /var/lib/libvirt/images)"
       become: true
       ansible.builtin.copy:
         src: "../templates/{{ item }}"
@@ -140,13 +140,14 @@
         - master.ign
         - bootstrap.ign
 
-    # --- Bootstrap 專區 (永遠只有 1 台，不需要迴圈) ---
+    # --- Bootstrap 專區 ---
     - name: "4. 🛠️ 建立 Bootstrap 虛擬機專屬硬碟 (需要 root 權限)"
       become: true
       ansible.builtin.command:
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2 {{ bootstrap.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2"
+      when: "bootstrap.target_host == inventory_hostname"
 
     - name: "4.1 🛠️ 批次建立 Control Node 虛擬機專屬硬碟 (需要 root 權限)"
       become: true
@@ -154,9 +155,10 @@
         cmd: "qemu-img create -f qcow2 -F qcow2 -b /var/lib/libvirt/images/fcos.qcow2 /var/lib/libvirt/images/{{ item.vm_name }}.qcow2 {{ item.vm_disk_size }}G"
       args:
         creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
-      loop: "{{ controlNodes.hosts }}" # <--- 直接吃整個 List！
+      loop: "{{ controlNodes.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
-    - name: "5. 🔐 設定基礎映像檔、Bootstrap 與身分證的存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
+    - name: "5. 🔐 設定基礎映像檔與身分證的存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
       become: true
       ansible.builtin.file:
         path: "/var/lib/libvirt/images/{{ item }}"
@@ -167,7 +169,15 @@
         - fcos.qcow2
         - master.ign
         - bootstrap.ign
-        - "{{ bootstrap.vm_name }}.qcow2"
+
+    - name: "5.0 🔐 設定 Bootstrap 虛擬硬碟存取權限"
+      become: true
+      ansible.builtin.file:
+        path: "/var/lib/libvirt/images/{{ bootstrap.vm_name }}.qcow2"
+        owner: libvirt-qemu
+        group: ppksgopin
+        mode: '0664'
+      when: "bootstrap.target_host == inventory_hostname"
 
     - name: "5.1 🔐 批次設定 Control Node 虛擬硬碟存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
       become: true
@@ -177,6 +187,7 @@
         group: ppksgopin
         mode: '0664'
       loop: "{{ controlNodes.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
     - name: "5.3 🛡️ 設定 QEMU Bridge Helper 的存取權限 (允許 ppksgopin 透過 bridge 連網)"
       become: true
@@ -201,12 +212,14 @@
         command: define
         xml: "{{ lookup('template', '../templates/bootstrap.xml.j2') }}"
         autostart: true
+      when: "bootstrap.target_host == inventory_hostname"
 
-    - name: "7. ⚡ 啟掌握 Bootstrap 虛擬機 (使用 ppksgopin 的 qemu:///session)"
+    - name: "7. ⚡ 啟動 Bootstrap 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
         uri: 'qemu:///session'
         name: "{{ bootstrap.vm_name }}"
         state: running
+      when: "bootstrap.target_host == inventory_hostname"
 
     - name: "6.1 📝 批次定義 Control Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
@@ -217,6 +230,7 @@
         xml: "{{ lookup('template', '../templates/control.xml.j2', template_vars={'item': item}) }}"
         autostart: true
       loop: "{{ controlNodes.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
     - name: "7.1 ⚡ 批次啟動 Control Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
@@ -224,3 +238,4 @@
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ controlNodes.hosts }}"
+      when: "item.target_host == inventory_hostname"

@@ -18,9 +18,9 @@
     mode: '0644'
     content: |
       apiVersion: v1
-      baseDomain: example.com
+      baseDomain: {{ cluster_domain.split('.', 1)[1] if '.' in cluster_domain else 'example.com' }}
       metadata:
-        name: okd-lab
+        name: {{ cluster_domain.split('.')[0] if '.' in cluster_domain else 'okd-lab' }}
       compute:
       - hyperthreading: Enabled
         name: worker
@@ -105,5 +105,5 @@
 
 - name: "0.8 📝 幫 Ansible 容器寫小抄 (解決 DNS 解析問題)"
   ansible.builtin.shell: |
-    echo "10.42.0.201 api.okd-lab.example.com" | tee -a /etc/hosts
+    echo "{{ bareMachine.hosts[0].ip }} api.{{ cluster_domain }}" | tee -a /etc/hosts
   changed_when: false

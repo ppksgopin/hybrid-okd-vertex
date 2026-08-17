@@ -2,8 +2,8 @@
 # =====================================================================
 # 🚀 戰役四：擴充叢集四肢 (在 lab2 佈署 Worker Nodes)
 # =====================================================================
-- name: "【戰役四】在 lab2 建立並啟動 OKD 工作節點 (Worker)"
-  hosts: lab2
+- name: "【戰役四】在實體機建立並啟動 OKD 工作節點 (Worker)"
+  hosts: onPremises
   gather_facts: no
   become: false  # <--- 關閉全域提權，改為用一般使用者執行
   vars_files:
@@ -38,7 +38,7 @@
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
 
-    - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到 lab2 (需要 root 權限寫入 /var/lib/libvirt/images)"
+    - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到實體機 (需要 root 權限寫入 /var/lib/libvirt/images)"
       become: true
       ansible.builtin.copy:
         src: "../templates/worker.ign"
@@ -52,6 +52,7 @@
       args:
         creates: "/var/lib/libvirt/images/{{ item.vm_name }}.qcow2"
       loop: "{{ workNodes.onPremises.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
     - name: "7. 🔐 設定基礎映像檔與身分證的存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
       become: true
@@ -72,6 +73,7 @@
         group: ppksgopin
         mode: '0664'
       loop: "{{ workNodes.onPremises.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
     - name: "8.3 🛡️ 設定 QEMU Bridge Helper 的存取權限 (允許 ppksgopin 透過 bridge 連網)"
       become: true
@@ -97,6 +99,7 @@
         xml: "{{ lookup('template', '../templates/worker.xml.j2', template_vars={'item': item}) }}"
         autostart: true
       loop: "{{ workNodes.onPremises.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
     - name: "10. ⚡ 批次啟動 Worker Node 虛擬機 (使用 ppksgopin 的 qemu:///session)"
       community.libvirt.virt:
@@ -104,18 +107,19 @@
         name: "{{ item.vm_name }}"
         state: running
       loop: "{{ workNodes.onPremises.hosts }}"
+      when: "item.target_host == inventory_hostname"
 
 # =====================================================================
 # 🚀 戰役五：叢集 Day-2 基礎設施組態修正
 # =====================================================================
-- name: "【戰役五】修正 OKD 預設排程 (將 Ingress 導向 Worker)"
-  hosts: localhost
-  gather_facts: no
-  tasks:
-    - name: "1. 🛠️ 執行 oc patch 強制 Ingress Controller 跑在 Worker 節點"
-      ansible.builtin.shell: |
-        oc patch ingresscontroller default -n openshift-ingress-operator \
-        --kubeconfig="{{ playbook_dir }}/../_build_ign/auth/kubeconfig" \
-        --type=merge \
-        --patch='{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker":""}}}}}'
-      ignore_errors: yes
+#- name: "【戰役五】修正 OKD 預設排程 (將 Ingress 導向 Worker)"
+#  hosts: localhost
+#  gather_facts: no
+#  tasks:
+#    - name: "1. 🛠️ 執行 oc patch 強制 Ingress Controller 跑在 Worker 節點"
+#      ansible.builtin.shell: |
+#        oc patch ingresscontroller default -n openshift-ingress-operator \
+#        --kubeconfig="{{ playbook_dir }}/../_build_ign/auth/kubeconfig" \
+#        --type=merge \
+#        --patch='{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker":""}}}}}'
+#      ignore_errors: yes

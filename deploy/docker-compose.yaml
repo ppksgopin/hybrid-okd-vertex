@@ -19,3 +19,12 @@ services:
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     restart: always
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bastion-cloudflared
+    restart: always
+    network_mode: host  # 使用 host 網路模式，方便直接對接本機的服務
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=eyJhIjoiZWE2NTExNjdkODE5MzBkYjlmODQ2YWU1MTYwYzEyNTQiLCJ0IjoiYjNkMDQzNjAtYjUyZS00NDFjLWI2NDktYmFlMWFhNjU2MGVlIiwicyI6Ik1HWTRaRFprWWpjdE56TTROUzAwWVdNM0xUa3pPVGt0TVRjMllqYzRPR1ptTm1RNCJ9
