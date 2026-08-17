@@ -12,7 +12,17 @@
     state: directory
     mode: '0755'
 
-- name: "0.2 📝 寫入 install-config.yaml 核心規格書 (動態節點數量)"
+- name: "0.1.1 🔍 自動尋找並讀取容器內的 SSH Public Key"
+  ansible.builtin.set_fact:
+    cluster_ssh_key: "{{ lookup('file', item) }}"
+  with_first_found:
+    - files:
+        - /root/.ssh/id_ed25519.pub
+        - /root/.ssh/id_rsa.pub
+        - /root/.ssh/id_ecdsa.pub
+      skip: true
+
+- name: "0.2 📝 寫入 install-config.yaml 核心規格書 (動態節點數量與 SSH Key)"
   ansible.builtin.copy:
     dest: "{{ playbook_dir }}/../_build_ign/install-config.yaml"
     mode: '0644'
@@ -32,7 +42,7 @@
       platform:
         none: {}
       pullSecret: '{"auths":{"fake":{"auth":"aG9nZf=="}}}'
-      sshKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICO6j3RqNSmQ8SOrTw/6ZOBlXn/EJ5ew/byDglbuUa1m ppksgopin@lenovo-master'
+      sshKey: '{{ cluster_ssh_key | default("") | trim }}'
 
 - name: "0.3 📥 下載並解壓 OKD 官方核心安裝工具"
   ansible.builtin.unarchive:

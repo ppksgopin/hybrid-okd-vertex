@@ -30,6 +30,7 @@
         url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
         dest: /tmp/fcos.qcow2.xz # 先下載到 /tmp
         mode: '0644'
+      when: "(workNodes.onPremises.hosts | selectattr('target_host', 'equalto', inventory_hostname) | list | length) > 0"
 
     - name: "4. 📦 解壓縮 QCOW2 映像檔 (需要 root 權限寫入 /var/lib/libvirt/images)"
       become: true
@@ -37,6 +38,7 @@
         cmd: "unxz -k -c /tmp/fcos.qcow2.xz > /var/lib/libvirt/images/fcos.qcow2"
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
+      when: "(workNodes.onPremises.hosts | selectattr('target_host', 'equalto', inventory_hostname) | list | length) > 0"
 
     - name: "5. 🛸 把 Worker 身分證 (Ignition) 上傳到實體機 (需要 root 權限寫入 /var/lib/libvirt/images)"
       become: true
@@ -44,6 +46,7 @@
         src: "../templates/worker.ign"
         dest: "/var/lib/libvirt/images/worker.ign"
         mode: '0644'
+      when: "(workNodes.onPremises.hosts | selectattr('target_host', 'equalto', inventory_hostname) | list | length) > 0"
 
     - name: "6. 🛠️ 批次建立 Worker Node 虛擬機專屬硬碟 (需要 root 權限)"
       become: true
@@ -64,6 +67,7 @@
       loop:
         - fcos.qcow2
         - worker.ign
+      when: "(workNodes.onPremises.hosts | selectattr('target_host', 'equalto', inventory_hostname) | list | length) > 0"
 
     - name: "8. 🔐 批次設定 Worker Node 虛擬硬碟存取權限 (開放給 libvirt-qemu 與 ppksgopin)"
       become: true
