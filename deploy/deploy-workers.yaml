@@ -116,14 +116,14 @@
 # =====================================================================
 # 🚀 戰役五：叢集 Day-2 基礎設施組態修正
 # =====================================================================
-#- name: "【戰役五】修正 OKD 預設排程 (將 Ingress 導向 Worker)"
-#  hosts: localhost
-#  gather_facts: no
-#  tasks:
-#    - name: "1. 🛠️ 執行 oc patch 強制 Ingress Controller 跑在 Worker 節點"
-#      ansible.builtin.shell: |
-#        oc patch ingresscontroller default -n openshift-ingress-operator \
-#        --kubeconfig="{{ playbook_dir }}/../_build_ign/auth/kubeconfig" \
-#        --type=merge \
-#        --patch='{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker":""}}}}}'
-#      ignore_errors: yes
+- name: "【戰役五】修正 OKD 預設排程 (將 Ingress 導向 Worker)"
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: "1. 🛠️ 執行 oc patch 強制 Ingress Controller 跑在 Worker 節點"
+      ansible.builtin.shell: |
+        oc patch ingresscontroller default -n openshift-ingress-operator \
+        --kubeconfig="{{ playbook_dir }}/../_build_ign/auth/kubeconfig" \
+        --type=merge \
+        --patch='{"spec":{"nodePlacement":{"nodeSelector":{"matchLabels":{"node-role.kubernetes.io/worker":""}}}}}'
+      ignore_errors: yes
