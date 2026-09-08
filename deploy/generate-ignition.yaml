@@ -22,7 +22,7 @@
         - /root/.ssh/id_ecdsa.pub
       skip: true
 
-- name: "0.2 📝 寫入 install-config.yaml 核心規格書 (動態節點數量與 SSH Key)"
+- name: "0.2 📝 寫入 install-config.yaml 核心規格書 (動態節點數量與官方 Pull Secret)"
   ansible.builtin.copy:
     dest: "{{ playbook_dir }}/../_build_ign/install-config.yaml"
     mode: '0644'
@@ -41,7 +41,7 @@
         replicas: {{ controlNodes.hosts | length | default(1) }}
       platform:
         none: {}
-      pullSecret: '{"auths":{"fake":{"auth":"aG9nZf=="}}}'
+      pullSecret: '{{ lookup("file", playbook_dir + "/../configuration/pull-secret.json") | trim }}'
       sshKey: '{{ cluster_ssh_key | default("") | trim }}'
 
 - name: "0.3 📥 下載並解壓 OKD 官方核心安裝工具"

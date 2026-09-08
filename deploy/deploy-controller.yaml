@@ -117,16 +117,36 @@
         state: restarted
       when: qemu_security_config.changed
 
-    - name: "2. 📥 自動下載官方 FCOS QEMU 映像檔 (取代 Live ISO)"
+    - name: "1.9 🔍 動態向 openshift-install 詢問最匹配的 SCOS 映像檔網址"
+      delegate_to: localhost
+      ansible.builtin.command: "{{ playbook_dir }}/../_build_ign/openshift-install coreos print-stream-json"
+      register: coreos_stream_json
+      changed_when: false
+
+    - name: "1.10 🧠 解析 SCOS 下載網址 (自動相容 xz 與 gz 格式)"
+      ansible.builtin.set_fact:
+        scos_qcow2_url: >-
+          {{
+            (coreos_stream_json.stdout | from_json).architectures.x86_64.artifacts.qemu.formats['qcow2.xz'].disk.location
+            | default((coreos_stream_json.stdout | from_json).architectures.x86_64.artifacts.qemu.formats['qcow2.gz'].disk.location)
+          }}
+
+    - name: "2. 📥 自動下載官方 SCOS QEMU 映像檔"
       ansible.builtin.get_url:
-        url: "https://builds.coreos.fedoraproject.org/prod/streams/stable/builds/{{ fcos_version }}/x86_64/fedora-coreos-{{ fcos_version }}-qemu.x86_64.qcow2.xz"
-        dest: /tmp/fcos.qcow2.xz # 先下載到 /tmp
+        url: "{{ scos_qcow2_url }}"
+        dest: /tmp/scos.qcow2.archive # 統一暫存檔名
         mode: '0644'
 
-    - name: "2.1 📦 解壓縮 QCOW2 映像檔 (需要 root 權限寫入 /var/lib/libvirt/images)"
+    - name: "2.1 📦 智慧解壓縮 SCOS 映像檔 (保留 fcos.qcow2 檔名以相容後續腳本)"
       become: true
-      ansible.builtin.shell:
-        cmd: "unxz -k -c /tmp/fcos.qcow2.xz > /var/lib/libvirt/images/fcos.qcow2"
+      ansible.builtin.shell: |
+        if [[ "{{ scos_qcow2_url }}" == *.gz ]]; then
+          zcat /tmp/scos.qcow2.archive > /var/lib/libvirt/images/fcos.qcow2
+        elif [[ "{{ scos_qcow2_url }}" == *.xz ]]; then
+          unxz -k -c /tmp/scos.qcow2.archive > /var/lib/libvirt/images/fcos.qcow2
+        else
+          echo "未知的壓縮格式" && exit 1
+        fi
       args:
         creates: /var/lib/libvirt/images/fcos.qcow2
 

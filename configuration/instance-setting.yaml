@@ -1,6 +1,9 @@
+# configuration/instance-setting.yaml
+
 cluster_domain: okd-lab.example.com
-okd_version: "4.14.0-0.okd-2024-01-26-175629"
-fcos_version: "38.20231002.3.1"
+# ⚠️ 注意：請依據 OKD 官方 GitHub Releases 填入 4.18 的確切版本號
+# 例如: "4.18.0-0.okd-scos-..."
+okd_version: "4.18.0-okd-scos.10"
 
 bareMachine:
   hosts:
@@ -33,10 +36,11 @@ workNodes:
   onPremises:
     interface_bridge: br0
     hosts:
+      # 🚀 升級調整：為應付 OADP、Loki 與 GitOps，將 RAM 從 8192 提升至 12288 (12GB) 或更高
       - vm_name: worker-01
         vm_ip: 10.42.0.211
         vm_cpu: 4
-        vm_memory: 8192
+        vm_memory: 12288
         vm_disk_size: 100
         vm_mac: "52:54:00:44:55:66"
         target_host: lab2
@@ -44,7 +48,7 @@ workNodes:
       - vm_name: worker-02
         vm_ip: 10.42.0.212
         vm_cpu: 4
-        vm_memory: 8192
+        vm_memory: 12288
         vm_disk_size: 100
         vm_mac: "52:54:00:77:88:99"
         target_host: lab2
